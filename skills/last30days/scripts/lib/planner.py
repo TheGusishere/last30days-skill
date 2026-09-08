@@ -7,7 +7,7 @@ import re
 import unicodedata
 from collections import Counter
 
-from . import categories, competitors, entity_extract, http, providers, query, relevance, schema
+from . import categories, competitors, entity_extract, http, log, providers, query, relevance, schema
 
 # Hebrew Unicode block: U+0590–U+05FF
 _HEBREW_RE = re.compile(r'[\u0590-\u05FF]')
@@ -508,6 +508,15 @@ def _sanitize_plan(
         if requested:
             sources = [source for source in sources if source in requested]
         if not sources:
+            if honor_plan_sources:
+                label = str(subquery.get("label") or f"q{index}")
+                log.source_log(
+                    "Planner",
+                    f"Skipping external-plan subquery {label}: none of its planned "
+                    "sources are available under the current source configuration.",
+                    tty_only=False,
+                )
+                continue
             sources = list(source_weights)
         search_query = str(subquery.get("search_query") or "").strip()
         ranking_query = str(subquery.get("ranking_query") or "").strip()
@@ -525,6 +534,11 @@ def _sanitize_plan(
     if depth == "quick" and subqueries:
         subqueries = subqueries[:1]
     if not subqueries:
+        if honor_plan_sources:
+            raise ValueError(
+                "No available planned sources remain. Enable a source named in "
+                "--plan or revise the plan/source configuration; no retrieval was started."
+            )
         return _fallback_plan(topic, available_sources, requested_sources, depth)
 
     intent = intent_hint
